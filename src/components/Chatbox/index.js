@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import useWebSocket, { ReadyState } from 'react-use-websocket';
+
 import "./chatbox.css";
 import { BsChatRightTextFill } from "react-icons/bs";
 import { RiCloseFill } from "react-icons/ri";
@@ -14,12 +16,14 @@ import ButtonGroup from '../ButtonGrid';
 
 //import ImageUploadForm from '../ImageUpload';
 //import Button from '@material-ui/core/Button';
-
 //import fetch from 'node-fetch';
 
 //const URL = "http://localhost:8000/api/response/";
 // const URL = "http://127.0.0.1:8000/api/response/";
-const URL = "https://api.eazibots.com/api/response/";
+// const URL = "http://0.0.0.0:8080/api/response/";
+
+const WEBSOCKET_URL = "ws://0.0.0.0:8080/ws/socket-server/";
+const RECORNNECT_INTERVAL = 10000
 
 function Chatbox({ userName, operatorName }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,6 +36,14 @@ function Chatbox({ userName, operatorName }) {
   const [loading, setLoading] = useState(false);
   const [sessionKey, setSessionKey] = useState("");
   const [availableDates, setAvailableDates] = useState([]);
+
+  const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
+    reconnectInterval: RECORNNECT_INTERVAL,
+    onError: (event) => {
+      setLoading(false);
+      console.error(event.error);
+    } 
+  });
 
   const toggleChatbox = () => {
     setIsOpen(!isOpen);
@@ -60,6 +72,13 @@ function Chatbox({ userName, operatorName }) {
     }
   };
 
+  const handleResponseError = (response) => {
+    if (response.type && response.type === 'Error') {
+      console.error(response.message);
+      setLoading(false)
+    }
+  }
+
   const formatDate = (datetime, formatType) => {
     const types = {
       forBackend: "yyyy-MM-dd'T'HH:mm:ssxxx",
@@ -81,7 +100,14 @@ function Chatbox({ userName, operatorName }) {
   };
 
   const handleSendBtn = () => {
-    const { type, value } = currentInputMode;
+    const { value, type } = currentInputMode;
+    
+
+    // sendJsonMessage({
+    //   msg: 'This is my new request',
+    //   session_key: sessionKey,
+    //   origin: window.origin
+    // });
 
     if (
       (type === "manualInput" && manualTextInput.trim() === "") ||
@@ -118,75 +144,15 @@ function Chatbox({ userName, operatorName }) {
       };
     });
 
-    // send value to backend
     return submitValue(valueToSend);
   };
 
   const submitValue = async (value) => {
-    const csrftoken = getCookie("csrftoken");
-    const sessiontoken = getCookie("sessionid");
-    //console.log(csrftoken, ">>>>>>", sessiontoken);
-
-    try {
-      const response = await fetch(URL, {
-        method: "POST",
-        mode: "cors",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrftoken,
-          "X-Session-ID": sessiontoken,
-        },
-        body: JSON.stringify({ msg: value, session_key: sessionKey }),
-        credentials: "include",
-      });
-      const result = await response.json();
-      const text = result['response']['response']['text']
-      const probe = result['response']['response']['probe']
-      const buttons = result['response']['response']['buttons']
-    
-      
-
-      setLoading(false);
-
-      const msg2 = {
-        role: "operator",
-        name: operatorName,
-        message: result['response']['response'],
-        //probe: result['response']['probe']
-      };
-      setSessionKey(result["session_key"]);
-
-      if (Array.isArray(result["response"])) {
-        const startDates = result["response"].map((dateObj) => dateObj.start);
-    
-        setAvailableDates(startDates); // Update availableDates state with the array of start dates
-        setCurrentInputMode(() => {
-          return {
-            type: "date",
-            value: "",
-          };
-        });
-      } else if (probe == 'True') {
-        setCurrentInputMode(() => {
-          return {
-            type: "button",
-            value: "",
-          };
-        });
-      }else {
-        setCurrentInputMode(() => {
-          return {
-            type: "manualInput",
-            value: "",
-          };
-        });
-      }
-
-      setMessages((messages) => [...messages, msg2]);
-    } catch (err) {
-      setLoading(false);
-      console.error("Error:", err);
-    }
+    sendJsonMessage({
+      msg: value,
+      session_key: sessionKey,
+      origin: window.origin
+    });
   };
 
   useEffect(() => {
@@ -200,6 +166,13 @@ function Chatbox({ userName, operatorName }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentInputMode.value, currentInputMode.type]);
+
+
+  useEffect(() => {
+    if (lastJsonMessage) {
+      handleResponseError(lastJsonMessage);
+    }
+  }, [lastJsonMessage])
 
   return (
     <div className="chatbox">
@@ -240,9 +213,9 @@ function Chatbox({ userName, operatorName }) {
             .map((msg, index) => {
             if (
                 msg["role"] === "operator" && msg.message.probe =='True'
-                
+
               ) {
-                
+
                 const buttons = msg.message.buttons
                 console.log(buttons)
                 return (
@@ -355,7 +328,7 @@ export default Chatbox;
           };
         });
       }*/
-      
+
 
 
 
@@ -409,7 +382,7 @@ export default Chatbox;
 /* else if (
                 msg["role"] === "operator" &&
                 msg["message"].includes("new or existing")
-            
+
               ) {
                 return (
                   <React.Fragment key={index}>

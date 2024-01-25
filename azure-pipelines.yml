@@ -8,6 +8,7 @@ trigger:
 
 jobs:
   - deployment: node
+    environment: "stage"
     strategy:
      runOnce:
        deploy:
